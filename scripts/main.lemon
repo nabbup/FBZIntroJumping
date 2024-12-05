@@ -1,0 +1,273 @@
+global u8 landedOnFBZ = 0
+global bool usingNewChunks = false
+// mod options
+global u8 FBZ1_JUMP
+global u8 FBZ1_NIGHT
+global u8 FBZ1_PRIORITY
+// toggles for each option
+define u8 OFF = 0
+define u8 ORIGINS_JUMPING = 1
+define u8 S3C_JUMPING = 2
+define u8 ALT_JUMPING = 3
+define u8 NIGHT = 1
+
+// Check for stuff when landing on the ground
+function void Character.LandingOnGroundResetState()
+{
+	if (global.zone_act == 0x0400 && landedOnFBZ == 1 && A0 == 0xffffb000)
+	{
+		landedOnFBZ = 2
+		player1.control_override = 0
+	}
+	if (global.zone_act == 0x0400 && landedOnFBZ == 2 && A0 == 0xffffb04a && FBZ1_JUMP != S3C_JUMPING)
+	{
+		landedOnFBZ = 3
+		player2.control_override = 0
+	}
+	base.Character.LandingOnGroundResetState()
+}
+
+function void initializeMainGame()
+{
+	base.initializeMainGame()
+	if (!landedOnFBZ)
+		return
+	player1.control_override = 0xff
+	if (FBZ1_JUMP == S3C_JUMPING)
+		return
+	hud.dirty.timer = 0
+	timer.alldata = 0
+	player2.control_override = 0xff
+}
+
+//# address-hook(0x011eec) end(0x011fd4)
+//# translated(0x012012) end(0x01209c)
+//# translated(0x01209e) end(0x012100)
+//# translated(0x012102) end(0x012170)
+//# address-hook(0x0153c2) end(0x01560a)
+function void Character.CheckCollision()
+{
+	if (landedOnFBZ == 1 && char.velocity.y < 0)
+		return
+	base.Character.CheckCollision()
+}
+
+function void Character.updateJumpMoves()
+{
+	if (FBZ1_PRIORITY && landedOnFBZ == 1)
+	{
+		char.sprite_attributes |= sprite_attribute.PRIORITY
+		char.sprite_priority = 0x100
+	}
+	if (landedOnFBZ == 1 && A0 == 0xffffb000 && FBZ1_JUMP == S3C_JUMPING)
+		player1.control_override = char.velocity.y >= -0x200 ? 0 : 0xff
+	base.Character.updateJumpMoves()
+}
+
+// Create new intro for FBZ1 where player jumps onto the opening platform (if it exists)
+//# address-hook(0x01c2b0) end(0x01c360)
+function void fn01c2b0()
+{
+	landedOnFBZ = 0
+	base.fn01c2b0()
+	
+	setupFBZIntro()
+}
+
+function void setupFBZIntro()
+{
+	if (global.rolling_demo != 0 || checkpoint.number != 0 || global.zone_act != 0x0400 || FBZ1_JUMP == OFF)
+		return
+	landedOnFBZ = 1
+	
+	// ... there is not a better aay to do this, is there?
+	if (FBZ1_JUMP == ORIGINS_JUMPING) // Origins-like
+	{
+		camera.position.y.u16 += 0x7e
+		u16[0xffffb000 + 0x10] -= 0x20 // P1 x-pos
+		u16[0xffffb000 + 0x14] += 0xa8 // P1 y-pos
+		
+		u16[0xffffb000 + 0x18] = 0x80 // P1 x-vel
+		u16[0xffffb000 + 0x1a] = -0x980 // P1 y-vel
+		
+		u8[0xffffb000 + 0x20] = char.state.ROLLING // P1 state
+		u8[0xffffb000 + 0x2a] |= char.flag.IN_AIR // P1 flags
+		
+		u16[0xffffb04a + 0x18] = 0xa0 // P2 x-vel
+		u16[0xffffb04a + 0x1a] = -0xb00 // P2 y-vel
+		
+		u8[0xffffb04a + 0x20] = char.state.ROLLING // P2 state
+		u8[0xffffb04a + 0x2a] |= char.flag.IN_AIR // P2 flags
+	}
+	else if (FBZ1_JUMP == S3C_JUMPING) // S3C-like
+	{
+		camera.position.y.u16 = 0x70c
+		u16[0xffffb000 + 0x10] += 0x5e // P1 x-pos
+		u16[0xffffb000 + 0x14] += 0x90 // P1 y-pos
+		u16[0xffffb000 + 0x1a] = -0x9f0 // P1 y-vel
+		u8[0xffffb000 + 0x20] = char.state.ROLLING // P1 state
+		u8[0xffffb000 + 0x2a] |= char.flag.IN_AIR // P1 flags
+	}
+	else if (FBZ1_JUMP == ALT_JUMPING) // Used to be the Origins-like option until I made it more accurate
+	{
+		u16[0xffffb000 + 0x10] -= 0x30 // P1 x-pos
+		u16[0xffffb000 + 0x14] += 0x90 // P1 y-pos
+		
+		u16[0xffffb000 + 0x18] = 0x100 // P1 x-vel
+		u16[0xffffb000 + 0x1a] = -0x980 // P1 y-vel
+		
+		u8[0xffffb000 + 0x20] = char.state.ROLLING // P1 state
+		u8[0xffffb000 + 0x2a] |= char.flag.IN_AIR // P1 flags
+		
+		u16[0xffffb04a + 0x18] = 0x100 // P2 x-vel
+		u16[0xffffb04a + 0x1a] = -0x980 // P2 y-vel
+		
+		u8[0xffffb04a + 0x20] = char.state.ROLLING // P2 state
+		u8[0xffffb04a + 0x2a] |= char.flag.IN_AIR // P2 flags
+	}
+}
+
+// fix cloud color in act 2's boss area
+//# address-hook(0x052f32) end(0x052f9e)
+function void fn052f32()
+{
+	u16 pal1_backup
+	u16 pal2_backup
+	if (FBZ1_NIGHT == NIGHT)
+	{
+		pal1_backup = u16[0xfffffc62]
+		pal2_backup = u16[0xfffffce2]
+	}
+	base.fn052f32()
+	if (FBZ1_NIGHT == NIGHT && System.getGlobalVariableValueByName("useottsOriginalZoneOrder.fbzPalettes") == 0)
+	{
+		u16[0xfffffc62] = pal1_backup
+		u16[0xfffffce2] = pal2_backup
+	}
+}
+
+//# address-hook(0x006a76) end(0x006bd6)
+function void InitializeGameCharacters()
+{
+	base.InitializeGameCharacters()
+	if (!landedOnFBZ)
+		return
+	if (FBZ1_JUMP == ORIGINS_JUMPING && u32[0xffffb04a] == addressof(Character.BaseUpdate.Tails))
+	{
+		u16[0xffffb04a + 0x14] = u16[0xffffb000 + 0x14] + 0x50
+		tails.ai_routine = 0
+	}
+}
+
+//# address-hook(0x013a10) end(0x013b24)
+function void Character.TailsAI.Init()
+{
+	if (FBZ1_JUMP == S3C_JUMPING && global.zone_act == 0x0400 && checkpoint.number.backup.tails == 0)
+	{
+		tails.respawn_counter = 0
+		tails.ai_routine = 0x04
+		
+		if (FBZ1_PRIORITY)
+		{
+			char.sprite_attributes |= sprite_attribute.PRIORITY
+			char.sprite_priority = 0x100
+		}
+		
+		char.position.x.u16 = objA1.position.x.u16 - 0x40
+		char.position.y.u16 = objA1.position.y.u16 - 0x50
+		tails.flight_target.x = objA1.position.x.u16
+		tails.flight_target.y = objA1.position.y.u16 - 0x50
+
+		char.velocity.x = 0
+		char.velocity.y = 0
+		char.groundspeed = 0
+		u8[A0 + 0x2d] = 0
+		char.double_jump_state = 0
+		char.flags = char.flag.IN_AIR
+		char.drown_countdown = 30
+		char.control_flags = (control_flag.DISABLE_INTERACTION | control_flag.DISABLE_UPDATE)
+		u8[A0 + 0x30] = 0
+		u8[A0 + 0x31] = 0
+		char.hlock_countdown = 0
+		char.invuln.countdown = 0
+		char.invinc.countdown = 0
+		char.speedup.countdown = 0
+		char.protection_flag = 0
+		char.look_up_down_timer = 0
+		char.angle_sensor_1 = 0
+		char.angle_sensor_2 = 0
+		u8[A0 + 0x3c] = 0
+		char.spindash = 0
+		char.spindash_charge = 0
+		char.jumping = 0
+
+		// Fix for Tails' speed caps not corrected when he despawned underwater
+		setSpeedCapProperties(A4, false)
+
+		u8[A0 + 0x41] = 0
+		tails.flight_countdown = 0xf0
+		UpdateTailsFlight_innerB()
+		
+		return
+	}
+	base.Character.TailsAI.Init()
+}
+
+//# address-hook(0x01bfb0) end(0x01c0a4)
+function void UpdateCamera()
+{
+	base.UpdateCamera()
+	if (landedOnFBZ == 2 || landedOnFBZ == 3)
+		hud.dirty.timer = 1
+	if (hud.dirty.timer == 1 && ((!isSecondCharacter(CHARACTER_TAILS) || (FBZ1_JUMP == S3C_JUMPING)) && landedOnFBZ == 2) || landedOnFBZ == 3)
+		landedOnFBZ = 0
+}
+
+function u32 System.loadExternalRawData(string key, u32 targetAddress)
+{
+	if (key == "fbz1night" && FBZ1_NIGHT == NIGHT)
+		key = ""
+	return base.System.loadExternalRawData(key, targetAddress)
+}
+
+function void copyPaletteDataFromTable(u8 index, u16 ramAddress)
+{
+	if ((index == 0x12 || index == 0x13) && FBZ1_NIGHT == NIGHT)
+	{
+		u64 key = "fbz_s3c_night_interior" // base palette for both acts
+		u16 numColors = System.loadExternalPaletteData(key, 0, 0x800000, 0x10)
+
+		for (u8 i = 0; i < numColors; ++i)
+		{
+			u32 rgba = u32[0x800000 + i * 4]
+			if (rgba & 0xff000000)
+			{
+				u16[0x0A90DC + i * 2] = packColorExt(rgba)
+				u16[0x0A913C + i * 2] = packColorExt(rgba)
+			}
+		}
+		key = "fbz_s3c_night_interior_overlay" // overlayed onto base palette when switching back to interior
+		numColors = System.loadExternalPaletteData(key, 0, 0x800000, 0x08)
+		for (u8 i = 0; i < numColors; ++i)
+		{
+			u32 rgba = u32[0x800000 + i * 4]
+			if (rgba & 0xff000000)
+				u16[0x052DC0 + i * 2] = packColorExt(rgba)
+		}
+		if (index == 0x13 && (System.getGlobalVariableValueByName("useottsOriginalZoneOrder.fbzPalettes") != 0 && !Game.getSetting(SETTING_ICZ_NIGHTTIME)))
+		{
+			base.copyPaletteDataFromTable(index, ramAddress)
+			return
+		}
+		key = "fbz1_s3c_night" // overlayed onto base palette for sky sections
+		numColors = System.loadExternalPaletteData(key, 0, 0x800000, 0x0e)
+
+		for (u8 i = 0; i < numColors; ++i)
+		{
+			u32 rgba = u32[0x800000 + i * 4]
+			if (rgba & 0xff000000)
+				u16[0x052dd0 + i * 2] = packColorExt(rgba)
+		}
+	}
+	base.copyPaletteDataFromTable(index, ramAddress)
+}
