@@ -3,7 +3,7 @@
 	{
 		"Name": "FBZ Intro Jumping",
 		"UniqueID": "nabbup-fbz-intro-jumping",
-		"Author": "nabbup",
+		"Author": "Raine (nabbup)",
 		"Description": "Players jump onto the opening platform in FBZ1. Disables collision and control for a brief moment in the intro, may cause issues with certain level mods and could break character mods.",
 		"ModVersion": "3.0",
 		"GameVersion": "24.02.02.0"
